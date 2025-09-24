@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Polling System - Socket.io Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .teacher { background-color: #e8f5e8; }
+        .student { background-color: #e8f0ff; }
+        .logs { background-color: #f8f8f8; }
+        input, select, button {
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .disconnect-btn {
+            background-color: #dc3545;
+        }
+        .disconnect-btn:hover {
+            background-color: #c82333;
+        }
+        #logs {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .log-event { color: #007bff; font-weight: bold; }
+        .log-error { color: #dc3545; font-weight: bold; }
+        .log-success { color: #28a745; font-weight: bold; }
+        .log-data { color: #666; margin-left: 10px; }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        h1, h2, h3 { color: #333; }
+        .input-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .test-results {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Polling System - Socket.io Test Suite</h1>
+    
+    <div class="container">
+        <div id="connectionStatus" class="status disconnected">
+            Disconnected
+        </div>
+        <button id="connectBtn" onclick="connect()">Connect to Server</button>
+        <button id="disconnectBtn" onclick="disconnect()" class="disconnect-btn" style="display:none;">Disconnect</button>
+        <input type="text" id="serverUrl" value="http://localhost:5000" placeholder="Server URL">
+    </div>
+
+    <div class="container">
+        <div class="section teacher">
+            <h2>Teacher Actions</h2>
+            <div class="form-group">
+                <div class="input-row">
+                    <input type="text" id="teacherPollId" placeholder="Poll ID">
+                    <button onclick="teacherJoin()">Join as Teacher</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="input-row">
+                    <input type="text" id="startQuestionPollId" placeholder="Poll ID">
+                    <input type="text" id="startQuestionId" placeholder="Question ID">
+                    <button onclick="startQuestion()">Start Question</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="input-row">
+                    <input type="text" id="endQuestionPollId" placeholder="Poll ID">
+                    <input type="text" id="endQuestionId" placeholder="Question ID">
+                    <button onclick="endQuestion()">End Question</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="input-row">
+                    <input type="text" id="removeStudentPollId" placeholder="Poll ID">
+                    <input type="text" id="removeStudentName" placeholder="Student Name">
+                    <button onclick="removeStudent()">Remove Student</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="section student">
+            <h2>Student Actions</h2>
+            <div class="form-group">
+                <div class="input-row">
+                    <input type="text" id="studentPollId" placeholder="Poll ID">
+                    <input type="text" id="studentName" placeholder="Student Name">
+                    <button onclick="joinPoll()">Join Poll</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="input-row">
+                    <input type="text" id="answerPollId" placeholder="Poll ID">
+                    <input type="text" id="answerQuestionId" placeholder="Question ID">
+                    <input type="number" id="selectedOption" placeholder="Option Index (0-based)" min="0">
+                    <button onclick="submitAnswer()">Submit Answer</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Quick Test Scenarios</h2>
+            <div class="form-group">
+                <div class="input-row">
+                    <button onclick="runBasicTest()">Run Basic Test Flow</button>
+                    <button onclick="runMultiStudentTest()">Multi-Student Test</button>
+                    <button onclick="runErrorTest()">Error Handling Test</button>
+                    <button onclick="clearLogs()">Clear Logs</button>
+                </div>
+            </div>
+            <div class="test-results" id="testResults" style="display:none;">
+                <h3>Test Results</h3>
+                <div id="testResultsContent"></div>
+            </div>
+        </div>
+
+        <div class="section logs">
+            <h2>Socket.io Event Logs</h2>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let testResults = [];
+
+        function log(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            let className = '';
+            
+            switch(type) {
+                case 'event': className = 'log-event'; break;
+                case 'error': className = 'log-error'; break;
+                case 'success': className = 'log-success'; break;
+                case 'data': className = 'log-data'; break;
+            }
+            
+            logs.innerHTML += `<div><span class="${className}">[${timestamp}] ${message}</span></div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            
+            if (connected) {
+                status.textContent = `Connected (${socket.id})`;
+                status.className = 'status connected';
+                connectBtn.style.display = 'none';
+                disconnectBtn.style.display = 'inline-block';
+            } else {
+                status.textContent = 'Disconnected';
+                status.className = 'status disconnected';
+                connectBtn.style.display = 'inline-block';
+                disconnectBtn.style.display = 'none';
+            }
+        }
+
+        function connect() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            
+            if (socket) {
+                socket.disconnect();
+            }
+
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling']
+            });
+
+            // Connection events
+            socket.on('connect', () => {
+                log('Connected to server', 'success');
+                updateConnectionStatus(true);
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`Disconnected: ${reason}`, 'error');
+                updateConnectionStatus(false);
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`Connection error: ${error.message}`, 'error');
+                updateConnectionStatus(false);
+            });
+
+            // Listen for all events
+            socket.onAny((eventName, ...args) => {
+                if (!['connect', 'disconnect', 'connect_error'].includes(eventName)) {
+                    log(`Event: ${eventName}`, 'event');
+                    if (args.length > 0) {
+                        log(`Data: ${JSON.stringify(args, null, 2)}`, 'data');
+                    }
+                }
+            });
+
+            // Specific event handlers for testing
+            socket.on('student-joined', (data) => {
+                testResults.push({type: 'student-joined', data, timestamp: Date.now()});
+            });
+
+            socket.on('question-started', (data) => {
+                testResults.push({type: 'question-started', data, timestamp: Date.now()});
+            });
+
+            socket.on('answer-submitted', (data) => {
+                testResults.push({type: 'answer-submitted', data, timestamp: Date.now()});
+            });
+
+            socket.on('poll-results-updated', (data) => {
+                testResults.push({type: 'poll-results-updated', data, timestamp: Date.now()});
+            });
+
+            socket.on('timer-update', (data) => {
+                testResults.push({type: 'timer-update', data, timestamp: Date.now()});
+            });
+
+            socket.on('error', (data) => {
+                testResults.push({type: 'error', data, timestamp: Date.now()});
+                log(`Server error: ${data.message}`, 'error');
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+
+        // Teacher functions
+        function teacherJoin() {
+            if (!socket) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const pollId = document.getElementById('teacherPollId').value;
+            if (!pollId) {
+                log('Please enter Poll ID', 'error');
+                return;
+            }
+            
+            socket.emit('teacher-join', { pollId });
+            log(`Teacher joining poll: ${pollId}`, 'info');
+        }
+
+        function startQuestion() {
+            if (!socket) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const pollId = document.getElementById('startQuestionPollId').value;
+            const questionId = document.getElementById('startQuestionId').value;
+            
+            if (!pollId || !questionId) {
+                log('Please enter Poll ID and Question ID', 'error');
+                return;
+            }
+            
+            socket.emit('start-question', { pollId, questionId });
+            log(`Starting question: ${questionId} in poll: ${pollId}`, 'info');
+        }
+
+        function endQuestion() {
+            if (!socket) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const pollId = document.getElementById('endQuestionPollId').value;
+            const questionId = document.getElementById('endQuestionId').value;
+            
+            if (!pollId || !questionId) {
+                log('Please enter Poll ID and Question ID', 'error');
+                return;
+            }
+            
+            socket.emit('end-question', { pollId, questionId });
+            log(`Ending question: ${questionId} in poll: ${pollId}`, 'info');
+        }
+
+        function removeStudent() {
+            if (!socket) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const pollId = document.getElementById('removeStudentPollId').value;
+            const studentName = document.getElementById('removeStudentName').value;
+            
+            if (!pollId || !studentName) {
+                log('Please enter Poll ID and Student Name', 'error');
+                return;
+            }
+            
+            socket.emit('remove-student', { pollId, studentName });
+            log(`Removing student: ${studentName} from poll: ${pollId}`, 'info');
+        }
+
+        // Student functions
+        function joinPoll() {
+            if (!socket) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const pollId = document.getElementById('studentPollId').value;
+            const studentName = document.getElementById('studentName').value;
+            
+            if (!pollId || !studentName) {
+                log('Please enter Poll ID and Student Name', 'error');
+                return;
+            }
+            
+            socket.emit('join-poll', { pollId, studentName });
+            log(`Student ${studentName} joining poll: ${pollId}`, 'info');
+        }
+
+        function submitAnswer() {
+            if (!socket) {
+                log('Not connected to server', 'error');
+                return;
+            }
+            const pollId = document.getElementById('answerPollId').value;
+            const questionId = document.getElementById('answerQuestionId').value;
+            const selectedOption = parseInt(document.getElementById('selectedOption').value);
+            
+            if (!pollId || !questionId || isNaN(selectedOption)) {
+                log('Please enter Poll ID, Question ID, and Selected Option', 'error');
+                return;
+            }
+            
+            socket.emit('submit-answer', { pollId, questionId, selectedOption });
+            log(`Submitting answer: option ${selectedOption} for question ${questionId}`, 'info');
+        }
+
+        // Test scenarios
+        function runBasicTest() {
+            log('=== Running Basic Test Flow ===', 'event');
+            log('1. This test requires you to have created a poll and question via REST API first', 'info');
+            log('2. Enter the Poll ID and Question ID in the respective fields', 'info');
+            log('3. Follow this sequence: Teacher Join → Student Join → Start Question → Submit Answer', 'info');
+            showTestResults();
+        }
+
+        function runMultiStudentTest() {
+            log('=== Running Multi-Student Test ===', 'event');
+            log('This test simulates multiple students joining and answering', 'info');
+            
+            if (!socket) {
+                connect();
+                setTimeout(runMultiStudentTest, 1000);
+                return;
+            }
+            
+            const pollId = document.getElementById('studentPollId').value;
+            if (!pollId) {
+                log('Please enter a Poll ID first', 'error');
+                return;
+            }
+            
+            // Simulate multiple students
+            const students = ['Alice', 'Bob', 'Charlie', 'Diana'];
+            students.forEach((name, index) => {
+                setTimeout(() => {
+                    socket.emit('join-poll', { pollId, studentName: name });
+                    log(`Student ${name} joined poll`, 'info');
+                }, index * 500);
+            });
+            
+            showTestResults();
+        }
+
+        function runErrorTest() {
+            log('=== Running Error Handling Test ===', 'event');
+            
+            if (!socket) {
+                connect();
+                setTimeout(runErrorTest, 1000);
+                return;
+            }
+            
+            // Test invalid poll ID
+            socket.emit('join-poll', { pollId: 'invalid-poll-id', studentName: 'Test Student' });
+            log('Testing invalid poll ID', 'info');
+            
+            setTimeout(() => {
+                // Test invalid question
+                socket.emit('submit-answer', { 
+                    pollId: 'invalid-poll', 
+                    questionId: 'invalid-question', 
+                    selectedOption: 0 
+                });
+                log('Testing invalid question submission', 'info');
+            }, 1000);
+            
+            showTestResults();
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+            testResults = [];
+            hideTestResults();
+        }
+
+        function showTestResults() {
+            document.getElementById('testResults').style.display = 'block';
+            updateTestResults();
+        }
+
+        function hideTestResults() {
+            document.getElementById('testResults').style.display = 'none';
+        }
+
+        function updateTestResults() {
+            const content = document.getElementById('testResultsContent');
+            if (testResults.length === 0) {
+                content.innerHTML = '<p>No test results yet. Events will appear here as they occur.</p>';
+                return;
+            }
+            
+            let html = '<ul>';
+            testResults.slice(-10).forEach(result => {
+                const time = new Date(result.timestamp).toLocaleTimeString();
+                html += `<li><strong>${result.type}</strong> at ${time}: ${JSON.stringify(result.data)}</li>`;
+            });
+            html += '</ul>';
+            
+            content.innerHTML = html;
+        }
+
+        // Auto-connect on page load
+        window.onload = function() {
+            log('Socket.io Test Page loaded. Click Connect to start testing.', 'info');
+        };
+    </script>
+</body>
+</html>

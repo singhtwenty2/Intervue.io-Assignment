@@ -81,7 +81,7 @@ io.on("connection", (socket) => {
     socketManager.handleConnection(socket);
 });
 
-const PORT = process.env.PORT || 5500;
+const PORT = process.env.PORT || 3000;
 
 const startServer = async () => {
     try {
