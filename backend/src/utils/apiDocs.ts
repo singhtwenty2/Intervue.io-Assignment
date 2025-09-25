@@ -6,7 +6,7 @@ export const apiDocumentation = {
         company: "Intervue.io",
         role: "SDE Intern",
         round: "Assignment Round 1",
-        developer: "Your Name",
+        developer: "Aryan Singh",
         submissionDate: new Date().toISOString().split("T")[0],
         timeline: "2 Days Development",
     },
