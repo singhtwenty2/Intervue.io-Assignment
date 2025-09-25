@@ -17,10 +17,7 @@ const app: Express = express();
 const httpServer = createServer(app);
 
 const corsOptions = {
-    origin:
-        process.env.NODE_ENV === "production"
-            ? process.env.CORS_ORIGIN?.split(",")
-            : "*",
+    origin: true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
