@@ -10,6 +10,7 @@ import { connectDB } from "./config/database";
 import studentRoutes from "./routes/studentRoutes";
 import teacherRoutes from "./routes/teacherRoutes";
 import { SocketManager } from "./socket/socketManager";
+import { apiDocumentation } from "./utils/apiDocs";
 
 dotenv.config();
 
@@ -39,8 +40,11 @@ const limiter = rateLimit({
     max: 100,
     message: "Too many requests from this IP, please try again later.",
 });
-
 app.use("/api/", limiter);
+
+app.get("/", (req: Request, res: Response) => {
+    res.json(apiDocumentation);
+});
 
 app.get("/health", (req: Request, res: Response) => {
     res.json({ status: "OK", timestamp: new Date().toISOString() });
@@ -83,7 +87,6 @@ const PORT = process.env.PORT || 3000;
 const startServer = async () => {
     try {
         await connectDB();
-
         httpServer.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             console.log(
